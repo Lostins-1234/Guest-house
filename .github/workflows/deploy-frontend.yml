@@ -1,0 +1,55 @@
+name: Deploy Frontend
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'client/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Build production bundle
+        working-directory: ./client
+        env:
+          CI: false
+        run: |
+          npm ci
+          npm run build
+
+      - name: Debug deploy secrets
+        run: |
+          echo "Has FRONTEND_HOST: ${{ secrets.FRONTEND_HOST != '' }}"
+          echo "Has FRONTEND_USER: ${{ secrets.FRONTEND_USER != '' }}"
+          echo "Has FRONTEND_KEY: ${{ secrets.FRONTEND_KEY != '' }}"
+
+      - name: Add host to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.FRONTEND_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to VM via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.FRONTEND_HOST }}
+          username: ${{ secrets.FRONTEND_USER }}
+          key: ${{ secrets.FRONTEND_KEY }}
+          port: 22
+          timeout: 20m            # overall SSH timeout
+          command_timeout: 20m    # per-command timeout
+          script: |
+            cd ~/Guest_House_Portal/client
+            git pull origin main
+            npm ci
+            npm run build
+            # restart or start the pm2 process named "frontend"
+            pm2 restart frontend \
+              || pm2 start --name frontend "npx serve -s build -l 3000"
+            pm2 save

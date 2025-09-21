@@ -1,0 +1,40 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'server/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        
+      - name: Debug secrets
+        run: |
+          echo "Has BACKEND_HOST: ${{ secrets.BACKEND_HOST != '' }}"
+          echo "Has BACKEND_USER: ${{ secrets.BACKEND_USER != '' }}"
+          echo "Has BACKEND_KEY: ${{ secrets.BACKEND_KEY != '' }}"
+        
+      - name: Add host to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.BACKEND_HOST }} >> ~/.ssh/known_hosts
+        
+      - name: Deploy to VM
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.BACKEND_HOST }}
+          username: ${{ secrets.BACKEND_USER }}
+          key: ${{ secrets.BACKEND_KEY }}
+          script: |
+            cd ~/Guest_House_Portal
+            git pull
+            cd server
+            npm install
+            pm2 restart backend || pm2 start --name backend "node index.js"
+            pm2 restart index || echo "No index process found to restart"
+            
